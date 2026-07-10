@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Draft Board — Pokémon (lecture seule)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-void: #0e1016;
+    --surface: #171a24;
+    --surface-raised: #1f2330;
+    --surface-hi: #272c3d;
+    --line: rgba(255,255,255,0.07);
+    --text-primary: #e8eaf0;
+    --text-muted: #8890a4;
+    --accent: #ee5a52;
+    --ok: #6cd68b;
+    --info: #5fb0e0;
+
+    --t-normal:#a8a878; --t-fire:#f08030; --t-water:#6890f0; --t-electric:#f0c418;
+    --t-grass:#78c850; --t-ice:#98d8d8; --t-fighting:#c03028; --t-poison:#a040a0;
+    --t-ground:#e0c068; --t-flying:#a890f0; --t-psychic:#f85888; --t-bug:#a8b820;
+    --t-rock:#b8a038; --t-ghost:#705898; --t-dragon:#7038f8; --t-dark:#705848;
+    --t-steel:#b8b8d0; --t-fairy:#ee99ac;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  html,body{height:100%;background:var(--bg-void);color:var(--text-primary);font-family:'Inter',sans-serif;}
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif;margin:0;}
+  button{font-family:inherit;cursor:pointer;}
+  input{font-family:inherit;}
+  .hidden{display:none !important;}
+  a{color:var(--info);}
+
+  #top-bar{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1px solid var(--line);padding:14px 22px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;}
+  #top-bar h1{font-size:16px;white-space:nowrap;}
+  .badge-readonly{background:var(--surface-hi);color:var(--text-muted);font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:.03em;}
+  .sync-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto;}
+  .sync-form.compact-hidden{display:none;}
+  #config-toggle-btn{background:var(--surface-raised);border:1px solid var(--line);color:var(--text-muted);width:32px;height:32px;border-radius:6px;font-size:14px;}
+  .sync-form input{background:var(--surface-raised);border:1px solid var(--line);color:var(--text-primary);padding:7px 10px;border-radius:6px;font-size:12px;min-width:160px;}
+  .btn-primary{background:var(--accent);border:none;color:#fff;padding:8px 14px;border-radius:6px;font-size:12.5px;font-weight:700;}
+  .btn-ghost{background:var(--surface-raised);border:1px solid var(--line);color:var(--text-primary);padding:8px 14px;border-radius:6px;font-size:12.5px;font-weight:600;}
+  #load-status{font-size:11px;color:var(--text-muted);width:100%;}
+
+  .main-tabs{display:flex;gap:4px;padding:10px 22px 0;flex-wrap:wrap;border-bottom:1px solid var(--line);background:var(--surface);}
+  .main-tab-btn{background:none;border:none;color:var(--text-muted);padding:9px 14px;border-radius:6px 6px 0 0;font-size:12.5px;font-weight:600;}
+  .main-tab-btn.active{background:var(--surface-raised);color:var(--text-primary);}
+
+  #content{padding:22px 26px 50px;max-width:1300px;margin:0 auto;}
+  .empty-state{text-align:center;color:var(--text-muted);padding:60px 20px;font-size:13px;}
+  .section{max-width:1100px;margin:0 auto 26px;}
+  .section h3{font-size:14px;margin-bottom:10px;}
+  .hint{font-size:11.5px;color:var(--text-muted);margin-bottom:14px;}
+  .th-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:middle;}
+
+  table.data-table{width:100%;border-collapse:collapse;background:var(--surface-raised);border-radius:10px;overflow:hidden;}
+  table.data-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-muted);padding:9px 12px;border-bottom:1px solid var(--line);}
+  table.data-table td{padding:9px 12px;font-size:12.5px;border-bottom:1px solid var(--line);}
+  table.data-table tr:last-child td{border-bottom:none;}
+  table.data-table tr:hover td{background:var(--surface-hi);}
+  .rank-pill{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:22px;padding:0 6px;border-radius:6px;font-weight:700;font-size:11.5px;}
+  .rank-top{background:var(--ok);color:#0e1016;}
+  .rank-bottom{background:var(--accent);color:#fff;}
+  .result-pill{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:5px;font-size:10.5px;font-weight:700;margin-right:3px;}
+  .result-pill.win{background:var(--ok);color:#0e1016;}
+  .result-pill.loss{background:var(--accent);color:#fff;}
+  .subtabs{display:flex;gap:6px;margin-bottom:14px;}
+  .subtab-btn{background:var(--surface-raised);border:1px solid var(--line);color:var(--text-muted);padding:7px 13px;border-radius:20px;font-size:12px;font-weight:600;}
+  .subtab-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .mvp-sprite{width:32px;height:32px;vertical-align:middle;}
+
+  .week-tab-bar{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0;}
+  .week-tab-btn{background:var(--surface-raised);border:1px solid var(--line);color:var(--text-muted);padding:6px 12px;border-radius:20px;font-size:11.5px;font-weight:600;}
+  .week-tab-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .match-row{display:flex;align-items:center;gap:10px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12.5px;}
+  .match-team{display:flex;align-items:center;flex:1;}
+  .match-vs{color:var(--text-muted);font-size:11px;}
+  .match-status{margin-left:auto;font-weight:700;}
+  .match-score{color:var(--ok);}
+  .match-pending{color:var(--text-muted);font-weight:500;font-style:italic;}
+
+  .roster-teams-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
+  .team-card{background:var(--surface-raised);border:1px solid var(--line);border-left:3px solid var(--team-color,var(--accent));border-radius:10px;padding:14px;}
+  .team-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-weight:700;font-size:13px;}
+  .roster-pill-list{display:flex;flex-wrap:wrap;gap:6px;}
+  .roster-pill{display:flex;align-items:center;gap:6px;background:var(--surface-hi);padding:4px 9px 4px 4px;border-radius:20px;font-size:11.5px;}
+  .roster-pill img{width:22px;height:22px;}
+  .budget-line{font-size:11px;color:var(--text-muted);margin-bottom:10px;}
+
+  .playoff-champion-banner{background:linear-gradient(90deg,var(--ok),var(--accent));color:#0e1016;font-weight:700;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13.5px;}
+  .playoff-bracket{display:flex;gap:34px;overflow-x:auto;padding-bottom:16px;}
+  .playoff-round-col{display:flex;flex-direction:column;justify-content:space-around;min-width:220px;gap:18px;}
+  .playoff-round-title{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-weight:700;margin-bottom:6px;text-align:center;}
+  .playoff-match-card{background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .playoff-slot{display:flex;align-items:center;gap:7px;padding:7px 10px;font-size:12px;border-bottom:1px solid var(--line);}
+  .playoff-slot:last-child{border-bottom:none;}
+  .playoff-slot.winner{background:var(--surface-hi);font-weight:700;}
+  .playoff-slot .po-seed{font-size:10px;color:var(--text-muted);font-weight:700;min-width:18px;}
+  .playoff-slot .po-tbd{color:var(--text-muted);font-style:italic;}
+  .playoff-slot .po-score{margin-left:auto;font-weight:700;font-size:11.5px;color:var(--text-muted);}
+  .playoff-slot.winner .po-score{color:var(--ok);}
+  .playoff-bye-tag{font-size:10px;color:var(--text-muted);font-style:italic;padding:5px 10px;}
+  .playoff-third-place{margin-top:26px;}
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <h1>📋 Draft Board — Pokémon</h1>
+  <span class="badge-readonly">👁 Lecture seule</span>
+  <button class="btn-ghost" id="refresh-btn-compact" style="display:none;margin-left:auto;">🔄 Actualiser</button>
+  <button class="btn-ghost" id="config-toggle-btn" title="Changer de source">⚙</button>
+  <div class="sync-form" id="sync-form-wrap">
+    <input type="text" id="bin-id-input" placeholder="ID du Bin JSONBin">
+    <input type="text" id="access-key-input" placeholder="Clé d'accès (lecture seule)">
+    <button class="btn-primary" id="load-btn">📥 Charger</button>
+    <button class="btn-ghost" id="refresh-btn" style="display:none;">🔄 Rafraîchir</button>
+  </div>
+  <div id="load-status"></div>
+</div>
+
+<div class="main-tabs hidden" id="main-tabs">
+  <button class="main-tab-btn active" data-tab="standings">🏆 Classement</button>
+  <button class="main-tab-btn" data-tab="playoffs">🏟 Play-offs</button>
+  <button class="main-tab-btn" data-tab="schedule">📅 Calendrier &amp; Résultats</button>
+  <button class="main-tab-btn" data-tab="roster">🐍 Roster</button>
+  <button class="main-tab-btn" data-tab="teamsheets">📊 Feuilles d'équipe</button>
+</div>
+
+<div id="content">
+  <div class="empty-state" id="empty-state">
+    Renseigne l'ID du Bin et la clé d'accès en lecture seule fournis par l'organisateur de la ligue, puis clique "Charger".
+  </div>
+</div>
+
+<script>
+let d = null;          // draft data
+let pokedex = {};      // pokedexSnapshot: pid -> {name, types, sprite}
+let activeTab = 'standings';
+let scheduleSelectedWeek = null;
+let standingsSubview = 'teams';
+
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pokemonName(pid){ const p = pokedex[pid]; return p ? p.name : pid; }
+function spriteUrl(pid){ const p = pokedex[pid]; return p && p.sprite ? p.sprite : `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pid}.png`; }
+function teamById(dd, teamId){ return dd.teams.find(t=>String(t.id)===String(teamId)); }
+function teamRosterPids(dd, teamId){ return Object.entries(dd.picks||{}).filter(([pid,tid])=>String(tid)===String(teamId)).map(([pid])=>pid); }
+function draftMatches(dd){ return Array.isArray(dd.matches) ? dd.matches : []; }
+function draftWeekOrder(dd){ return Array.isArray(dd.weekOrder) ? dd.weekOrder : []; }
+function weekSortKey(dd, week){ const order = draftWeekOrder(dd); const idx = order.indexOf(week); return idx === -1 ? order.length : idx; }
+function allWeeksSorted(dd){ const weeks = new Set(draftMatches(dd).map(m=>m.week)); return [...weeks].sort((a,b)=> weekSortKey(dd,a) - weekSortKey(dd,b)); }
+function draftPlayoffTeams(dd){
+  const n = dd.teams.length;
+  if(typeof dd.playoffTeams === 'number' && dd.playoffTeams >= 1 && dd.playoffTeams < n) return dd.playoffTeams;
+  return Math.max(1, Math.min(n - 1, Math.ceil(n / 2)));
+}
+function computeMatchResult(m){
+  const fieldedA = m.fieldedA || [], fieldedB = m.fieldedB || [];
+  if(fieldedA.length === 0 || fieldedB.length === 0) return { valid:false };
+  const isDead = pid => !!(m.stats && m.stats[pid] && m.stats[pid].dead);
+  const allDeadA = fieldedA.every(isDead), allDeadB = fieldedB.every(isDead);
+  if(allDeadA === allDeadB) return { valid:false, allDeadA, allDeadB };
+  if(allDeadA) return { valid:true, winner:'B', scoreA:0, scoreB: fieldedB.filter(p=>!isDead(p)).length };
+  return { valid:true, winner:'A', scoreA: fieldedA.filter(p=>!isDead(p)).length, scoreB:0 };
+}
+function computeTeamStandings(dd){
+  const matches = draftMatches(dd).filter(m=>!m.isPlayoff);
+  const standings = dd.teams.map(team=>{
+    const teamMatches = matches
+      .filter(m=> String(m.teamA)===String(team.id) || String(m.teamB)===String(team.id))
+      .map(m=>({ m, res: computeMatchResult(m) }))
+      .filter(x=>x.res.valid)
+      .sort((a,b)=> weekSortKey(dd,a.m.week) - weekSortKey(dd,b.m.week));
+    let wins=0, losses=0, diff=0;
+    const results = teamMatches.map(({m,res})=>{
+      const isA = String(m.teamA)===String(team.id);
+      const won = (isA && res.winner==='A') || (!isA && res.winner==='B');
+      const scoreSelf = isA ? res.scoreA : res.scoreB, scoreOpp = isA ? res.scoreB : res.scoreA;
+      if(won) wins++; else losses++;
+      diff += (scoreSelf - scoreOpp);
+      return { week:m.week, won };
+    });
+    let streak=0, streakWon=null;
+    for(let i=results.length-1;i>=0;i--){
+      if(streakWon===null){ streakWon = results[i].won; streak = 1; }
+      else if(results[i].won === streakWon){ streak++; } else break;
+    }
+    return { team, wins, losses, diff, results, streak, streakWon };
+  });
+  standings.sort((a,b)=> b.wins - a.wins || b.diff - a.diff);
+  return standings;
+}
+function computeMvpStandings(dd){
+  const matches = draftMatches(dd);
+  const agg = {};
+  matches.forEach(m=>{
+    const res = computeMatchResult(m);
+    if(!res.valid) return;
+    const fielded = [...(m.fieldedA||[]), ...(m.fieldedB||[])];
+    fielded.forEach(pid=>{
+      if(!agg[pid]) agg[pid] = { gp:0, k:0, d:0 };
+      const st = (m.stats && m.stats[pid]) || {k:0, dead:false};
+      agg[pid].gp += 1; agg[pid].k += st.k||0; agg[pid].d += st.dead ? 1 : 0;
+    });
+  });
+  const rows = Object.entries(agg).map(([pid,a])=>{
+    const team = teamById(dd, dd.picks[pid]);
+    return { pid, team, gp:a.gp, k:a.k, d:a.d, diff: a.k - a.d };
+  });
+  rows.sort((a,b)=> b.diff - a.diff || b.k - a.k || b.gp - a.gp);
+  return rows;
+}
+function playoffRoundName(teamsInRound){
+  switch(teamsInRound){
+    case 2: return 'Finale'; case 4: return 'Demi-finales'; case 8: return 'Quarts de finale';
+    case 16: return 'Huitièmes de finale'; case 32: return 'Seizièmes de finale';
+    default: return `Tour à ${teamsInRound} équipes`;
+  }
+}
+
+/* ---------------- Rendering ---------------- */
+function renderStandingsTeamsTable(dd){
+  const standings = computeTeamStandings(dd);
+  const topCut = draftPlayoffTeams(dd);
+  const rows = standings.map((s, idx)=>{
+    const rankClass = idx < topCut ? 'rank-top' : 'rank-bottom';
+    const diffLabel = s.diff > 0 ? `+${s.diff}` : `${s.diff}`;
+    const pillsHtml = s.results.map(r=> `<span class="result-pill ${r.won?'win':'loss'}">${r.won?'V':'D'}</span>`).join('');
+    const streakHtml = s.results.length ? `<span style="font-size:10.5px;font-weight:700;margin-left:4px;">${s.streakWon?'V':'D'}${s.streak}</span>` : '';
+    return `<tr>
+      <td><span class="rank-pill ${rankClass}">#${idx+1}</span></td>
+      <td><span class="th-dot" style="background:${s.team.color}"></span>${escapeHtml(s.team.name)}</td>
+      <td>${s.wins}V – ${s.losses}D</td>
+      <td>${diffLabel}</td>
+      <td>${pillsHtml}${streakHtml}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="data-table"><thead><tr><th>#</th><th>Équipe</th><th>Bilan</th><th>+/-</th><th>Historique</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderStandingsMvpTable(dd){
+  const rows = computeMvpStandings(dd);
+  const rowsHtml = rows.length ? rows.map((r, idx)=>{
+    const diffLabel = r.diff > 0 ? `+${r.diff}` : `${r.diff}`;
+    return `<tr>
+      <td><span class="rank-pill ${idx<3?'rank-top':'rank-bottom'}">#${idx+1}</span></td>
+      <td><img class="mvp-sprite" src="${spriteUrl(r.pid)}" loading="lazy" alt=""></td>
+      <td>${escapeHtml(pokemonName(r.pid))}</td>
+      <td>${r.team ? escapeHtml(r.team.name) : '—'}</td>
+      <td>${r.gp}</td><td>${r.k}</td><td>${r.d}</td><td>${diffLabel}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="8" style="color:var(--text-muted);">Aucune statistique pour l'instant.</td></tr>`;
+  return `<table class="data-table"><thead><tr><th>#</th><th></th><th>Pokémon</th><th>Équipe</th><th>GP</th><th>K</th><th>D</th><th>+/-</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+}
+function renderStandings(){
+  const subtabsHtml = `<div class="subtabs">
+    <button class="subtab-btn ${standingsSubview==='teams'?'active':''}" data-standings-sub="teams">🏆 Équipes</button>
+    <button class="subtab-btn ${standingsSubview==='mvp'?'active':''}" data-standings-sub="mvp">⭐ Pokémon (MVP)</button>
+  </div>`;
+  const body = standingsSubview==='mvp' ? renderStandingsMvpTable(d) : renderStandingsTeamsTable(d);
+  const hint = standingsSubview==='mvp'
+    ? "Classement des Pokémon sur la saison, playoffs compris (kills, morts, +/-)."
+    : `Classement de la saison régulière (hors play-offs). Les ${draftPlayoffTeams(d)} premières équipes (qualifiées) sont en vert.`;
+  document.getElementById('content').innerHTML = `<div class="section"><h3>Classement</h3><div class="hint">${hint}</div>${subtabsHtml}${body}</div>`;
+  document.querySelectorAll('[data-standings-sub]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ standingsSubview = btn.getAttribute('data-standings-sub'); renderStandings(); });
+  });
+}
+
+function playoffSlotHtml(dd, teamId, seedNum, isWinnerSlot, score, isBye){
+  if(!teamId) return `<div class="playoff-slot"><span class="po-tbd">À déterminer</span></div>`;
+  const team = teamById(dd, teamId);
+  if(!team) return `<div class="playoff-slot"><span class="po-tbd">Équipe inconnue</span></div>`;
+  return `<div class="playoff-slot ${isWinnerSlot?'winner':''}">
+    <span class="th-dot" style="background:${team.color}"></span>
+    ${seedNum?`<span class="po-seed">#${seedNum}</span>`:''}
+    <span>${escapeHtml(team.name)}${isBye?' <span class="playoff-bye-tag" style="padding:0;">(exempt)</span>':''}</span>
+    ${(score!==null && score!==undefined) ? `<span class="po-score">${score}</span>` : ''}
+  </div>`;
+}
+function playoffMatchCardHtml(dd, b, node){
+  const seedFor = tid => { const s = b.seeds.find(q=>String(q.teamId)===String(tid)); return s ? s.seed : null; };
+  if(node.bye){
+    const only = node.teamA || node.teamB;
+    return `<div class="playoff-match-card">${playoffSlotHtml(dd, only, seedFor(only), true, null, true)}<div class="playoff-bye-tag">Exempté du tour — qualifié direct</div></div>`;
+  }
+  const m = node.matchId ? draftMatches(dd).find(x=>x.id===node.matchId) : null;
+  const res = m ? computeMatchResult(m) : {valid:false};
+  return `<div class="playoff-match-card">
+    ${playoffSlotHtml(dd, node.teamA, seedFor(node.teamA), res.valid && res.winner==='A', res.valid?res.scoreA:null, false)}
+    ${playoffSlotHtml(dd, node.teamB, seedFor(node.teamB), res.valid && res.winner==='B', res.valid?res.scoreB:null, false)}
+  </div>`;
+}
+function renderPlayoffs(){
+  const container = document.getElementById('content');
+  const b = d.playoffBracket;
+  if(!b){
+    container.innerHTML = `<div class="section"><h3>Play-offs</h3><div class="empty-state">Les play-offs n'ont pas encore été générés par l'organisateur.</div></div>`;
+    return;
+  }
+  const finalRound = b.rounds[b.rounds.length-1];
+  const championNode = finalRound[0];
+  const championHtml = (championNode && championNode.winner) ? (()=>{
+    const t = teamById(d, championNode.winner);
+    return t ? `<div class="playoff-champion-banner">🏆 ${escapeHtml(t.name)} remporte les play-offs !</div>` : '';
+  })() : '';
+  const roundsHtml = b.rounds.map(round=>{
+    const title = playoffRoundName(round.length * 2);
+    const cardsHtml = round.map(node=> playoffMatchCardHtml(d, b, node)).join('');
+    return `<div class="playoff-round-col"><div class="playoff-round-title">${title}</div>${cardsHtml}</div>`;
+  }).join('');
+  const thirdPlaceHtml = b.thirdPlaceMatch ? `
+    <div class="playoff-third-place">
+      <div class="playoff-round-title">Petite finale (3e place)</div>
+      <div class="playoff-round-col" style="min-width:220px;">
+        ${(()=>{
+          const tp = b.thirdPlaceMatch;
+          const m = tp.matchId ? draftMatches(d).find(x=>x.id===tp.matchId) : null;
+          const res = m ? computeMatchResult(m) : {valid:false};
+          const seedFor = tid => { const s = b.seeds.find(q=>String(q.teamId)===String(tid)); return s ? s.seed : null; };
+          return `<div class="playoff-match-card">
+            ${playoffSlotHtml(d, tp.teamA, seedFor(tp.teamA), res.valid && res.winner==='A', res.valid?res.scoreA:null, false)}
+            ${playoffSlotHtml(d, tp.teamB, seedFor(tp.teamB), res.valid && res.winner==='B', res.valid?res.scoreB:null, false)}
+          </div>`;
+        })()}
+      </div>
+    </div>` : '';
+  container.innerHTML = `<div class="section" style="max-width:1300px;">
+    <h3>Play-offs</h3>
+    <div class="hint">Bracket seedé du classement de saison régulière.</div>
+    ${championHtml}
+    <div class="playoff-bracket">${roundsHtml}</div>
+    ${thirdPlaceHtml}
+  </div>`;
+}
+
+function renderSchedule(){
+  const container = document.getElementById('content');
+  const weeks = allWeeksSorted(d);
+  if(!scheduleSelectedWeek || !weeks.includes(scheduleSelectedWeek)){
+    scheduleSelectedWeek = (d.currentWeek && weeks.includes(d.currentWeek)) ? d.currentWeek : (weeks.length ? weeks[weeks.length-1] : null);
+  }
+  const weekTabsHtml = weeks.length
+    ? weeks.map(w=>`<button class="week-tab-btn ${w===scheduleSelectedWeek?'active':''}" data-week-tab="${escapeHtml(w)}">${w===d.currentWeek?'⭐ ':''}${escapeHtml(w)}</button>`).join('')
+    : `<div class="empty-state">Aucun match programmé.</div>`;
+  const matchesThisWeek = scheduleSelectedWeek ? draftMatches(d).filter(m=>m.week===scheduleSelectedWeek) : [];
+  const matchesHtml = matchesThisWeek.length ? matchesThisWeek.map(m=>{
+    const tA = teamById(d,m.teamA), tB = teamById(d,m.teamB);
+    if(!tA||!tB) return '';
+    const res = computeMatchResult(m);
+    const statusHtml = res.valid
+      ? `<span class="match-score">${res.scoreA} – ${res.scoreB}</span> ${res.winner==='A'?escapeHtml(tA.name):escapeHtml(tB.name)} gagne`
+      : `<span class="match-pending">à jouer</span>`;
+    return `<div class="match-row">
+      <span class="match-team"><span class="th-dot" style="background:${tA.color}"></span>${escapeHtml(tA.name)}</span>
+      <span class="match-vs">vs</span>
+      <span class="match-team"><span class="th-dot" style="background:${tB.color}"></span>${escapeHtml(tB.name)}</span>
+      <span class="match-status">${statusHtml}</span>
+    </div>`;
+  }).join('') : (scheduleSelectedWeek ? `<div class="empty-state">Aucun match cette semaine.</div>` : '');
+  container.innerHTML = `<div class="section">
+    <h3>Calendrier &amp; Résultats</h3>
+    <div class="hint">${d.teams.length} équipes.</div>
+    <div class="week-tab-bar">${weekTabsHtml}</div>
+    ${matchesHtml}
+  </div>`;
+  document.querySelectorAll('[data-week-tab]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ scheduleSelectedWeek = btn.getAttribute('data-week-tab'); renderSchedule(); });
+  });
+}
+
+function renderRoster(){
+  const container = document.getElementById('content');
+  const cardsHtml = d.teams.length ? d.teams.map(team=>{
+    const rosterIds = teamRosterPids(d, team.id);
+    const rosterHtml = rosterIds.length ? rosterIds.map(pid=>`<span class="roster-pill"><img src="${spriteUrl(pid)}" loading="lazy" alt="">${escapeHtml(pokemonName(pid))}</span>`).join('')
+      : `<span style="color:var(--text-muted);font-size:11.5px;">Aucun Pokémon drafté.</span>`;
+    return `<div class="team-card" style="--team-color:${team.color}">
+      <div class="team-card-head"><span><span class="th-dot" style="background:${team.color}"></span>${escapeHtml(team.name)}</span><span style="font-size:11px;color:var(--text-muted);">${rosterIds.length} Pokémon</span></div>
+      <div class="roster-pill-list">${rosterHtml}</div>
+    </div>`;
+  }).join('') : `<div class="empty-state">Aucune équipe.</div>`;
+  container.innerHTML = `<div class="section" style="max-width:1300px;"><h3>Roster</h3><div class="hint">Composition des équipes.</div><div class="roster-teams-grid">${cardsHtml}</div></div>`;
+}
+
+function renderTeamsheets(){
+  const container = document.getElementById('content');
+  const cardsHtml = d.teams.length ? d.teams.map(team=>{
+    const rosterIds = teamRosterPids(d, team.id);
+    const rows = rosterIds.map(pid=>{
+      let gp=0,k=0,dth=0;
+      draftMatches(d).forEach(m=>{
+        const inA = (m.fieldedA||[]).includes(pid), inB = (m.fieldedB||[]).includes(pid);
+        if(!inA && !inB) return;
+        const res = computeMatchResult(m);
+        if(!res.valid) return;
+        gp++;
+        const st = (m.stats && m.stats[pid]) || {k:0,dead:false};
+        k += st.k||0; dth += st.dead?1:0;
+      });
+      return { pid, gp, k, d:dth, diff:k-dth };
+    }).sort((a,b)=> b.diff - a.diff || b.k - a.k);
+    const rowsHtml = rows.length ? rows.map(r=>`<tr>
+      <td><img class="mvp-sprite" src="${spriteUrl(r.pid)}" loading="lazy" alt=""></td>
+      <td>${escapeHtml(pokemonName(r.pid))}</td><td>${r.gp}</td><td>${r.k}</td><td>${r.d}</td><td>${r.diff>0?'+':''}${r.diff}</td>
+    </tr>`).join('') : `<tr><td colspan="6" style="color:var(--text-muted);">Aucun Pokémon drafté.</td></tr>`;
+    return `<div class="section" style="max-width:900px;">
+      <h3><span class="th-dot" style="background:${team.color}"></span>${escapeHtml(team.name)}</h3>
+      <table class="data-table"><thead><tr><th></th><th>Pokémon</th><th>GP</th><th>K</th><th>D</th><th>+/-</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+    </div>`;
+  }).join('') : `<div class="empty-state">Aucune équipe.</div>`;
+  container.innerHTML = `<h3 style="max-width:1100px;margin:0 auto 16px;">Feuilles d'équipe</h3>${cardsHtml}`;
+}
+
+function setTab(tab){
+  activeTab = tab;
+  document.querySelectorAll('.main-tab-btn').forEach(b=> b.classList.toggle('active', b.getAttribute('data-tab')===tab));
+  if(tab==='standings') renderStandings();
+  else if(tab==='playoffs') renderPlayoffs();
+  else if(tab==='schedule') renderSchedule();
+  else if(tab==='roster') renderRoster();
+  else if(tab==='teamsheets') renderTeamsheets();
+}
+document.querySelectorAll('.main-tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> setTab(btn.getAttribute('data-tab')));
+});
+
+/* ---------------- JSONBin loading ---------------- */
+/* ⚙️ ORGANISATEUR : pour que ta communauté n'ait RIEN à saisir, colle ici l'ID de ton
+   Bin JSONBin et une clé d'accès EN LECTURE SEULE (jamais ta clé d'écriture !).
+   Laisse les deux vides si tu préfères que chacun renseigne l'ID/clé lui-même,
+   ou passe-les dans l'URL : draft-board-viewer.html?bin=XXX&key=YYY */
+const DEFAULT_BIN_ID = '6a517dfbf5f4af5e297f05af';
+const DEFAULT_KEY = '$2a$10$07RYnCfVoEBg3UTIa01r4OSC7kNm0GdNkfie5fnK1t.CdwOQpH4r.';
+
+const VIEWER_CREDS_KEY = 'pkdraft_viewer_creds_v1';
+function loadViewerCreds(){ try{ return JSON.parse(localStorage.getItem(VIEWER_CREDS_KEY)) || {}; }catch(e){ return {}; } }
+function saveViewerCreds(c){ localStorage.setItem(VIEWER_CREDS_KEY, JSON.stringify(c)); }
+
+async function loadFromJsonBin(binId, key){
+  const statusEl = document.getElementById('load-status');
+  statusEl.textContent = 'Chargement...';
+  try{
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+      headers:{ 'X-Access-Key': key, 'X-Master-Key': key }
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    const record = json.record || json;
+    const payload = record.data ? record : { data: record.data || record, pokedexSnapshot: record.pokedexSnapshot };
+    d = payload.data || record.data || record;
+    pokedex = payload.pokedexSnapshot || record.pokedexSnapshot || {};
+    if(!d || !d.teams){ throw new Error("Contenu inattendu : ce Bin ne semble pas contenir de draft publié."); }
+    saveViewerCreds({ binId, key });
+    document.getElementById('main-tabs').classList.remove('hidden');
+    document.getElementById('refresh-btn').style.display = '';
+    document.getElementById('refresh-btn-compact').style.display = '';
+    const publishedAt = record.publishedAt || payload.publishedAt;
+    statusEl.textContent = 'Chargé ✓' + (publishedAt ? ' — dernière publication : ' + new Date(publishedAt).toLocaleString('fr-FR') : '');
+    setTab(activeTab);
+  }catch(err){
+    statusEl.textContent = '';
+    document.getElementById('content').innerHTML = `<div class="empty-state">❌ Échec du chargement : ${escapeHtml(err.message)}<br>Vérifie l'ID du Bin et la clé fournis par l'organisateur.</div>`;
+  }
+}
+
+document.getElementById('load-btn').addEventListener('click', ()=>{
+  const binId = document.getElementById('bin-id-input').value.trim();
+  const key = document.getElementById('access-key-input').value.trim();
+  if(!binId || !key){ alert("Renseigne l'ID du Bin et la clé d'accès."); return; }
+  loadFromJsonBin(binId, key);
+});
+document.getElementById('refresh-btn').addEventListener('click', ()=>{
+  const binId = document.getElementById('bin-id-input').value.trim();
+  const key = document.getElementById('access-key-input').value.trim();
+  loadFromJsonBin(binId, key);
+});
+document.getElementById('refresh-btn-compact').addEventListener('click', ()=>{
+  const binId = document.getElementById('bin-id-input').value.trim();
+  const key = document.getElementById('access-key-input').value.trim();
+  loadFromJsonBin(binId, key);
+});
+document.getElementById('config-toggle-btn').addEventListener('click', ()=>{
+  document.getElementById('sync-form-wrap').classList.toggle('compact-hidden');
+});
+
+/* Auto-load, par ordre de priorité : URL (?bin=&key=) > valeurs codées en dur par
+   l'organisateur (DEFAULT_BIN_ID/DEFAULT_KEY) > dernière source utilisée sur cet appareil. */
+(function init(){
+  const params = new URLSearchParams(window.location.search);
+  const urlBin = params.get('bin'), urlKey = params.get('key');
+  const saved = loadViewerCreds();
+  const binId = urlBin || DEFAULT_BIN_ID || saved.binId || '';
+  const key = urlKey || DEFAULT_KEY || saved.key || '';
+  document.getElementById('bin-id-input').value = binId;
+  document.getElementById('access-key-input').value = key;
+  const preconfigured = !!((urlBin && urlKey) || (DEFAULT_BIN_ID && DEFAULT_KEY));
+  if(preconfigured) document.getElementById('sync-form-wrap').classList.add('compact-hidden');
+  if(binId && key) loadFromJsonBin(binId, key);
+})();
+</script>
+
+</body>
+</html>
