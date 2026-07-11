@@ -511,7 +511,7 @@ document.querySelectorAll('.main-tab-btn').forEach(btn=>{
    Web App Google Apps Script (donnée à la fin du déploiement, se termine par /exec).
    Laisse vide si tu préfères que chacun la renseigne lui-même, ou passe-la dans l'URL :
    draft-board-viewer.html?sheet=URL */
-const DEFAULT_SHEET_URL = '';
+const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzAzZrwehJEWYstUfCDThT9QXf7JAmIGXmlQHpSRAA9rDDS90N2tJPSDkpfl5A9rMvydQ/exec';
 
 const VIEWER_CREDS_KEY = 'pkdraft_viewer_creds_v1';
 function loadViewerCreds(){ try{ return JSON.parse(localStorage.getItem(VIEWER_CREDS_KEY)) || {}; }catch(e){ return {}; } }
