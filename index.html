@@ -104,6 +104,18 @@
   .playoff-slot.winner .po-score{color:var(--ok);}
   .playoff-bye-tag{font-size:10px;color:var(--text-muted);font-style:italic;padding:5px 10px;}
   .playoff-third-place{margin-top:26px;}
+
+  /* ---------- Plateau (board) tab ---------- */
+  .board-tiers{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;}
+  .board-tier-col{min-width:150px;max-width:150px;background:var(--surface-raised);border:1px solid var(--line);border-radius:10px;padding:10px;flex-shrink:0;}
+  .board-tier-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--text-muted);margin-bottom:8px;text-align:center;white-space:nowrap;}
+  .board-tier-body{display:flex;flex-direction:column;gap:6px;max-height:560px;overflow-y:auto;}
+  .board-mini-card{position:relative;background:var(--surface-hi);border-radius:8px;padding:6px 4px;text-align:center;font-size:10px;}
+  .board-mini-card.drafted{opacity:.4;}
+  .board-mini-card img{width:40px;height:40px;image-rendering:pixelated;}
+  .board-mini-name{margin-top:2px;line-height:1.2;}
+  .board-mini-owner{font-size:9px;margin-top:3px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .board-tera-badge{position:absolute;top:2px;right:2px;background:var(--accent);color:#fff;font-size:8.5px;font-weight:700;border-radius:4px;padding:1px 3px;line-height:1;}
 </style>
 </head>
 <body>
@@ -123,7 +135,8 @@
 </div>
 
 <div class="main-tabs hidden" id="main-tabs">
-  <button class="main-tab-btn active" data-tab="standings">🏆 Classement</button>
+  <button class="main-tab-btn active" data-tab="board">📋 Plateau</button>
+  <button class="main-tab-btn" data-tab="standings">🏆 Classement</button>
   <button class="main-tab-btn" data-tab="playoffs">🏟 Play-offs</button>
   <button class="main-tab-btn" data-tab="schedule">📅 Calendrier &amp; Résultats</button>
   <button class="main-tab-btn" data-tab="roster">🐍 Roster</button>
@@ -139,13 +152,21 @@
 <script>
 let d = null;          // draft data
 let pokedex = {};      // pokedexSnapshot: pid -> {name, types, sprite}
-let activeTab = 'standings';
+let activeTab = 'board';
 let scheduleSelectedWeek = null;
 let standingsSubview = 'teams';
 
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function pokemonName(pid){ const p = pokedex[pid]; return p ? p.name : pid; }
-function spriteUrl(pid){ const p = pokedex[pid]; return p && p.sprite ? p.sprite : `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pid}.png`; }
+function pokemonName(pid){
+  const p = pokedex[pid];
+  if(p == null) return pid;
+  return typeof p === 'string' ? p : (p.name || pid); // rétro-compat avec d'anciens Bins publiés avant l'allègement
+}
+function spriteUrl(pid){
+  const p = pokedex[pid];
+  if(p && typeof p === 'object' && p.sprite) return p.sprite; // rétro-compat
+  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pid}.png`;
+}
 function teamById(dd, teamId){ return dd.teams.find(t=>String(t.id)===String(teamId)); }
 function teamRosterPids(dd, teamId){ return Object.entries(dd.picks||{}).filter(([pid,tid])=>String(tid)===String(teamId)).map(([pid])=>pid); }
 function draftMatches(dd){ return Array.isArray(dd.matches) ? dd.matches : []; }
@@ -213,6 +234,46 @@ function computeMvpStandings(dd){
   rows.sort((a,b)=> b.diff - a.diff || b.k - a.k || b.gp - a.gp);
   return rows;
 }
+function tierCost(tier){ const n = Number(tier); return isNaN(n) ? 0 : n; }
+function draftTeraCaptainBudget(dd){ return typeof dd.teraCaptainBudget === 'number' ? dd.teraCaptainBudget : 0; }
+
+/* ---------------- Rendering ---------------- */
+function renderBoard(){
+  const container = document.getElementById('content');
+  const tierList = Array.isArray(d.tierList) ? d.tierList : [];
+  const tiers = d.tiers || {};
+  const teraOn = draftTeraCaptainBudget(d) > 0;
+  const grouped = {};
+  Object.entries(tiers).forEach(([pid, tier])=>{
+    if(!grouped[tier]) grouped[tier] = [];
+    grouped[tier].push(pid);
+  });
+  const orderedTiers = tierList.filter(t=> grouped[t] && grouped[t].length);
+  const columnsHtml = orderedTiers.map(tier=>{
+    const pids = grouped[tier].slice().sort((a,b)=> pokemonName(a).localeCompare(pokemonName(b)));
+    const priceLabel = (tier!=='Banned' && tier!=='Untiered') ? ` · ${tierCost(tier)} pts` : '';
+    const cardsHtml = pids.map(pid=>{
+      const draftedTeamId = d.picks[pid];
+      const team = draftedTeamId ? teamById(d, draftedTeamId) : null;
+      const banned = teraOn && d.teraBanned && d.teraBanned[pid];
+      return `<div class="board-mini-card ${team?'drafted':''}" title="${team?('Drafté par '+escapeHtml(team.name)):'Disponible'}">
+        ${banned?'<span class="board-tera-badge" title="Tera banni">T</span>':''}
+        <img src="${spriteUrl(pid)}" loading="lazy" alt="">
+        <div class="board-mini-name">${escapeHtml(pokemonName(pid))}</div>
+        ${team ? `<div class="board-mini-owner"><span class="th-dot" style="background:${team.color}"></span>${escapeHtml(team.name)}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="board-tier-col">
+      <div class="board-tier-head">${escapeHtml(tier)}${priceLabel}</div>
+      <div class="board-tier-body">${cardsHtml}</div>
+    </div>`;
+  }).join('');
+  container.innerHTML = `<div class="section" style="max-width:1300px;">
+    <h3>Plateau</h3>
+    <div class="hint">Prix et disponibilité de chaque Pokémon. Grisé = déjà drafté (le nom de l'équipe est indiqué).</div>
+    <div class="board-tiers">${columnsHtml || '<div class="empty-state">Aucun Pokémon sur ce plateau.</div>'}</div>
+  </div>`;
+}
 function playoffRoundName(teamsInRound){
   switch(teamsInRound){
     case 2: return 'Finale'; case 4: return 'Demi-finales'; case 8: return 'Quarts de finale';
@@ -221,7 +282,6 @@ function playoffRoundName(teamsInRound){
   }
 }
 
-/* ---------------- Rendering ---------------- */
 function renderStandingsTeamsTable(dd){
   const standings = computeTeamStandings(dd);
   const topCut = draftPlayoffTeams(dd);
@@ -373,6 +433,18 @@ function renderSchedule(){
 
 function renderRoster(){
   const container = document.getElementById('content');
+  const orderHtml = (Array.isArray(d.order) && d.order.length) ? `<div class="section">
+    <h3>Ordre de passage</h3>
+    <div class="hint">Ordre du 1ᵉʳ tour de draft, en ordre "serpent" (le 2e tour se déroule dans l'ordre inverse, le 3e à nouveau dans le sens initial, etc.).</div>
+    <table class="data-table" style="max-width:420px;">
+      <thead><tr><th>#</th><th>Équipe</th></tr></thead>
+      <tbody>${d.order.map((tid,i)=>{
+        const t = teamById(d, tid);
+        if(!t) return '';
+        return `<tr><td>${i+1}</td><td><span class="th-dot" style="background:${t.color}"></span>${escapeHtml(t.name)}</td></tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>` : '';
   const cardsHtml = d.teams.length ? d.teams.map(team=>{
     const rosterIds = teamRosterPids(d, team.id);
     const rosterHtml = rosterIds.length ? rosterIds.map(pid=>`<span class="roster-pill"><img src="${spriteUrl(pid)}" loading="lazy" alt="">${escapeHtml(pokemonName(pid))}</span>`).join('')
@@ -382,7 +454,7 @@ function renderRoster(){
       <div class="roster-pill-list">${rosterHtml}</div>
     </div>`;
   }).join('') : `<div class="empty-state">Aucune équipe.</div>`;
-  container.innerHTML = `<div class="section" style="max-width:1300px;"><h3>Roster</h3><div class="hint">Composition des équipes.</div><div class="roster-teams-grid">${cardsHtml}</div></div>`;
+  container.innerHTML = orderHtml + `<div class="section" style="max-width:1300px;"><h3>Roster</h3><div class="hint">Composition des équipes.</div><div class="roster-teams-grid">${cardsHtml}</div></div>`;
 }
 
 function renderTeamsheets(){
@@ -417,7 +489,8 @@ function renderTeamsheets(){
 function setTab(tab){
   activeTab = tab;
   document.querySelectorAll('.main-tab-btn').forEach(b=> b.classList.toggle('active', b.getAttribute('data-tab')===tab));
-  if(tab==='standings') renderStandings();
+  if(tab==='board') renderBoard();
+  else if(tab==='standings') renderStandings();
   else if(tab==='playoffs') renderPlayoffs();
   else if(tab==='schedule') renderSchedule();
   else if(tab==='roster') renderRoster();
