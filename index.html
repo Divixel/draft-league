@@ -80,6 +80,8 @@
   .match-vs{color:var(--text-muted);font-size:11px;}
   .match-status{margin-left:auto;font-weight:700;}
   .match-score{color:var(--ok);}
+  .match-score-link{text-decoration:none;color:inherit;border-bottom:1px dashed var(--ok);padding-bottom:1px;}
+  .match-score-link:hover{filter:brightness(1.2);}
   .match-pending{color:var(--text-muted);font-weight:500;font-style:italic;}
 
   .roster-teams-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
@@ -302,10 +304,11 @@ function renderStandingsTeamsTable(dd){
 }
 function renderStandingsMvpTable(dd){
   const rows = computeMvpStandings(dd);
+  const topCut = Math.ceil(rows.length / 2);
   const rowsHtml = rows.length ? rows.map((r, idx)=>{
     const diffLabel = r.diff > 0 ? `+${r.diff}` : `${r.diff}`;
     return `<tr>
-      <td><span class="rank-pill ${idx<3?'rank-top':'rank-bottom'}">#${idx+1}</span></td>
+      <td><span class="rank-pill ${idx<topCut?'rank-top':'rank-bottom'}">#${idx+1}</span></td>
       <td><img class="mvp-sprite" src="${spriteUrl(r.pid)}" loading="lazy" alt=""></td>
       <td>${escapeHtml(pokemonName(r.pid))}</td>
       <td>${r.team ? escapeHtml(r.team.name) : '—'}</td>
@@ -321,7 +324,7 @@ function renderStandings(){
   </div>`;
   const body = standingsSubview==='mvp' ? renderStandingsMvpTable(d) : renderStandingsTeamsTable(d);
   const hint = standingsSubview==='mvp'
-    ? "Classement des Pokémon sur la saison, playoffs compris (kills, morts, +/-)."
+    ? "Classement des Pokémon sur la saison, playoffs compris (kills, morts, +/-). La moitié supérieure du classement est en vert."
     : `Classement de la saison régulière (hors play-offs). Les ${draftPlayoffTeams(d)} premières équipes (qualifiées) sont en vert.`;
   document.getElementById('content').innerHTML = `<div class="section"><h3>Classement</h3><div class="hint">${hint}</div>${subtabsHtml}${body}</div>`;
   document.querySelectorAll('[data-standings-sub]').forEach(btn=>{
@@ -410,8 +413,12 @@ function renderSchedule(){
     const tA = teamById(d,m.teamA), tB = teamById(d,m.teamB);
     if(!tA||!tB) return '';
     const res = computeMatchResult(m);
+    const scoreSpan = `<span class="match-score">${res.scoreA} – ${res.scoreB}</span>`;
+    const scoreHtml = m.replayUrl
+      ? `<a class="match-score-link" href="${escapeHtml(m.replayUrl)}" target="_blank" rel="noopener" title="Voir le replay Showdown">${scoreSpan} 🔗</a>`
+      : scoreSpan;
     const statusHtml = res.valid
-      ? `<span class="match-score">${res.scoreA} – ${res.scoreB}</span> ${res.winner==='A'?escapeHtml(tA.name):escapeHtml(tB.name)} gagne`
+      ? `${scoreHtml} ${res.winner==='A'?escapeHtml(tA.name):escapeHtml(tB.name)} gagne`
       : `<span class="match-pending">à jouer</span>`;
     return `<div class="match-row">
       <span class="match-team"><span class="th-dot" style="background:${tA.color}"></span>${escapeHtml(tA.name)}</span>
