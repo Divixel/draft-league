@@ -505,8 +505,8 @@ document.querySelectorAll('.main-tab-btn').forEach(btn=>{
    Bin JSONBin et une clé d'accès EN LECTURE SEULE (jamais ta clé d'écriture !).
    Laisse les deux vides si tu préfères que chacun renseigne l'ID/clé lui-même,
    ou passe-les dans l'URL : draft-board-viewer.html?bin=XXX&key=YYY */
-const DEFAULT_BIN_ID = '6a517dfbf5f4af5e297f05af';
-const DEFAULT_KEY = '$2a$10$07RYnCfVoEBg3UTIa01r4OSC7kNm0GdNkfie5fnK1t.CdwOQpH4r.';
+const DEFAULT_BIN_ID = '';
+const DEFAULT_KEY = '';
 
 const VIEWER_CREDS_KEY = 'pkdraft_viewer_creds_v1';
 function loadViewerCreds(){ try{ return JSON.parse(localStorage.getItem(VIEWER_CREDS_KEY)) || {}; }catch(e){ return {}; } }
@@ -570,7 +570,10 @@ document.getElementById('config-toggle-btn').addEventListener('click', ()=>{
   document.getElementById('bin-id-input').value = binId;
   document.getElementById('access-key-input').value = key;
   const preconfigured = !!((urlBin && urlKey) || (DEFAULT_BIN_ID && DEFAULT_KEY));
-  if(preconfigured) document.getElementById('sync-form-wrap').classList.add('compact-hidden');
+  if(preconfigured){
+    document.getElementById('sync-form-wrap').classList.add('compact-hidden');
+    document.getElementById('config-toggle-btn').style.display = 'none';
+  }
   if(binId && key) loadFromJsonBin(binId, key);
 })();
 </script>
