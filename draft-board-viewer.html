@@ -71,6 +71,9 @@
   .subtab-btn{background:var(--surface-raised);border:1px solid var(--line);color:var(--text-muted);padding:7px 13px;border-radius:20px;font-size:12px;font-weight:600;}
   .subtab-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
   .mvp-sprite{width:32px;height:32px;vertical-align:middle;}
+  .type-icon-badge{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;padding:3px;box-sizing:border-box;flex-shrink:0;}
+  .type-icon-badge img{width:100%;height:100%;object-fit:contain;}
+  .type-icon-stellar{background:conic-gradient(from 180deg,#f5c6ec,#c9a7f0,#a7d8f0,#c9f0d0,#f5e6a7,#f5c6ec);color:#3a2a55;font-weight:800;font-size:11px;}
 
   .week-tab-bar{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0;}
   .week-tab-btn{background:var(--surface-raised);border:1px solid var(--line);color:var(--text-muted);padding:6px 12px;border-radius:20px;font-size:11.5px;font-weight:600;}
@@ -157,6 +160,14 @@ let activeTab = 'board';
 let scheduleSelectedWeek = null;
 let standingsSubview = 'teams';
 
+const TYPE_COLORS = {
+  normal:'var(--t-normal)', fire:'var(--t-fire)', water:'var(--t-water)', electric:'var(--t-electric)',
+  grass:'var(--t-grass)', ice:'var(--t-ice)', fighting:'var(--t-fighting)', poison:'var(--t-poison)',
+  ground:'var(--t-ground)', flying:'var(--t-flying)', psychic:'var(--t-psychic)', bug:'var(--t-bug)',
+  rock:'var(--t-rock)', ghost:'var(--t-ghost)', dragon:'var(--t-dragon)', dark:'var(--t-dark)',
+  steel:'var(--t-steel)', fairy:'var(--t-fairy)'
+};
+
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function pokemonName(pid){
   const p = pokedex[pid];
@@ -237,6 +248,18 @@ function computeMvpStandings(dd){
 }
 function tierCost(tier){ const n = Number(tier); return isNaN(n) ? 0 : n; }
 function draftTeraCaptainBudget(dd){ return typeof dd.teraCaptainBudget === 'number' ? dd.teraCaptainBudget : 0; }
+function teraTypeLabel(t){ return t==='stellar' ? 'Stellaire' : (t.charAt(0).toUpperCase()+t.slice(1)); }
+function teraTypeIconHtml(t, opts){
+  opts = opts || {};
+  const size = opts.size || 20;
+  if(t==='stellar') return `<span class="type-icon-badge type-icon-stellar" style="width:${size}px;height:${size}px;" title="Stellaire">✦</span>`;
+  return `<span class="type-icon-badge" style="width:${size}px;height:${size}px;background:${TYPE_COLORS[t]};" title="${teraTypeLabel(t)}"><img src="https://raw.githubusercontent.com/duiker101/pokemon-type-svg-icons/master/icons/${t}.svg" alt="${t}" loading="lazy"></span>`;
+}
+function draftTeraCaptains(dd){ return (dd.teraCaptains && typeof dd.teraCaptains === 'object') ? dd.teraCaptains : {}; }
+function teraCaptainTypes(dd, pid){
+  const v = draftTeraCaptains(dd)[pid];
+  return Array.isArray(v) ? v : (v ? [v] : []);
+}
 
 /* ---------------- Rendering ---------------- */
 function renderBoard(){
@@ -465,6 +488,7 @@ function renderRoster(){
 
 function renderTeamsheets(){
   const container = document.getElementById('content');
+  const teraOn = draftTeraCaptainBudget(d) > 0;
   const cardsHtml = d.teams.length ? d.teams.map(team=>{
     const rosterIds = teamRosterPids(d, team.id);
     const rows = rosterIds.map(pid=>{
@@ -480,13 +504,21 @@ function renderTeamsheets(){
       });
       return { pid, gp, k, d:dth, diff:k-dth };
     }).sort((a,b)=> b.diff - a.diff || b.k - a.k);
-    const rowsHtml = rows.length ? rows.map(r=>`<tr>
+    const rowsHtml = rows.length ? rows.map(r=>{
+      const teraTypes = teraCaptainTypes(d, r.pid);
+      const teraCellHtml = teraTypes.length
+        ? `⭐ ${teraTypes.map(t=>teraTypeIconHtml(t,{size:18})).join('')}`
+        : `<span style="color:var(--text-muted);">—</span>`;
+      return `<tr>
       <td><img class="mvp-sprite" src="${spriteUrl(r.pid)}" loading="lazy" alt=""></td>
-      <td>${escapeHtml(pokemonName(r.pid))}</td><td>${r.gp}</td><td>${r.k}</td><td>${r.d}</td><td>${r.diff>0?'+':''}${r.diff}</td>
-    </tr>`).join('') : `<tr><td colspan="6" style="color:var(--text-muted);">Aucun Pokémon drafté.</td></tr>`;
+      <td>${escapeHtml(pokemonName(r.pid))}</td>
+      ${teraOn ? `<td>${teraCellHtml}</td>` : ''}
+      <td>${r.gp}</td><td>${r.k}</td><td>${r.d}</td><td>${r.diff>0?'+':''}${r.diff}</td>
+    </tr>`;
+    }).join('') : `<tr><td colspan="${teraOn?7:6}" style="color:var(--text-muted);">Aucun Pokémon drafté.</td></tr>`;
     return `<div class="section" style="max-width:900px;">
       <h3><span class="th-dot" style="background:${team.color}"></span>${escapeHtml(team.name)}</h3>
-      <table class="data-table"><thead><tr><th></th><th>Pokémon</th><th>GP</th><th>K</th><th>D</th><th>+/-</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      <table class="data-table"><thead><tr><th></th><th>Pokémon</th>${teraOn?'<th>Tera</th>':''}<th>GP</th><th>K</th><th>D</th><th>+/-</th></tr></thead><tbody>${rowsHtml}</tbody></table>
     </div>`;
   }).join('') : `<div class="empty-state">Aucune équipe.</div>`;
   container.innerHTML = `<h3 style="max-width:1100px;margin:0 auto 16px;">Feuilles d'équipe</h3>${cardsHtml}`;
