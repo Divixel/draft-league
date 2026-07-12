@@ -124,6 +124,32 @@
   .board-mini-name{line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .board-mini-owner{font-size:9px;margin-top:1px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .board-tera-badge{position:absolute;top:2px;right:2px;background:var(--accent);color:#fff;font-size:8.5px;font-weight:700;border-radius:4px;padding:1px 3px;line-height:1;}
+
+  /* ---------- Écran d'accueil (synchronisation générale) ---------- */
+  #bundle-nav{display:flex;gap:8px;}
+  .home-master-card{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer;
+    background:linear-gradient(90deg, rgba(238,90,82,.14), rgba(95,176,224,.10));
+    border:1px solid var(--line);border-radius:12px;padding:16px 20px;
+  }
+  .home-master-card:hover{border-color:var(--accent);}
+  .draft-row-ro{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;
+    background:var(--surface-raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:9px;
+  }
+  .draft-row-ro:hover{border-color:var(--accent);}
+  .draft-info-ro{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .draft-title-ro{font-weight:600;font-size:14px;}
+  .draft-meta-ro{font-size:11.5px;color:var(--text-muted);}
+  .master-badge-ro{color:var(--ok);font-weight:600;}
+  .draft-open-arrow{font-size:11.5px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;}
+  .folder-block-ro{margin-bottom:14px;}
+  .folder-header-ro{
+    display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;color:var(--text-muted);
+    padding:6px 2px;text-transform:uppercase;letter-spacing:.02em;
+  }
+  .folder-count-ro{font-size:11px;font-weight:600;background:var(--surface-hi);padding:2px 8px;border-radius:20px;}
+  .folder-body-ro{padding-left:6px;border-left:2px solid var(--line);margin-left:4px;}
 </style>
 </head>
 <body>
@@ -131,6 +157,11 @@
 <div id="top-bar">
   <h1>📋 Draft Board — Pokémon</h1>
   <span class="badge-readonly">👁 Lecture seule</span>
+  <div id="bundle-nav" class="hidden">
+    <button class="btn-ghost" id="bundle-home-btn">🏠 Accueil</button>
+    <button class="btn-ghost" id="bundle-master-btn">🏆 Master Stats</button>
+    <button class="btn-ghost" id="bundle-copy-link-btn" title="Copier un lien direct vers cette vue">🔗 Copier le lien</button>
+  </div>
   <button class="btn-ghost" id="refresh-btn-compact" style="display:none;margin-left:auto;">🔄 Actualiser</button>
   <button class="btn-ghost" id="config-toggle-btn" title="Changer de source">⚙</button>
   <div class="sync-form" id="sync-form-wrap">
@@ -162,6 +193,9 @@ let pokedex = {};      // pokedexSnapshot: pid -> {name, types, sprite}
 let activeTab = 'board';
 let scheduleSelectedWeek = null;
 let standingsSubview = 'teams';
+let bundle = null;        // {drafts, folders, homeOrder, pokedexSnapshots, masterStats} si sync générale chargée
+let bundleView = 'home';  // 'home' | 'master' | 'draft' — uniquement pertinent quand bundle != null
+let bundleOpenDraftId = null;
 
 const TYPE_COLORS = {
   normal:'var(--t-normal)', fire:'var(--t-fire)', water:'var(--t-water)', electric:'var(--t-electric)',
@@ -536,6 +570,128 @@ function renderTeamsheets(){
   container.innerHTML = `<h3 style="max-width:1100px;margin:0 auto 16px;">Feuilles d'équipe</h3>${cardsHtml}`;
 }
 
+/* ---------------- Écran d'accueil (synchronisation générale) ---------------- */
+function bundleDraftRowHtml(dft){
+  const teamCount = (dft.teams||[]).length;
+  const pickCount = Object.keys(dft.picks||{}).length;
+  return `<div class="draft-row-ro" data-open-bundle-draft="${dft.id}">
+    <div class="draft-info-ro">
+      <span class="draft-title-ro">${escapeHtml(dft.name)}</span>
+      <span class="draft-meta-ro">${teamCount} équipe(s) · ${pickCount} pick(s)${dft.masterValidated ? ' · <span class="master-badge-ro">✅ Inclus dans Master Stats</span>' : ''}</span>
+    </div>
+    <span class="draft-open-arrow">Ouvrir →</span>
+  </div>`;
+}
+function renderBundleHome(){
+  document.getElementById('main-tabs').classList.add('hidden');
+  const container = document.getElementById('content');
+  const drafts = bundle.drafts || {};
+  const folders = bundle.folders || {};
+  const homeOrder = Array.isArray(bundle.homeOrder) && bundle.homeOrder.length
+    ? bundle.homeOrder
+    : Object.keys(drafts).map(id=>({type:'draft', id}));
+  const ms = bundle.masterStats;
+  const masterCardHtml = (ms && Array.isArray(ms.ranking) && ms.ranking.length) ? `<div class="section">
+    <div class="home-master-card" data-open-master="1">
+      <div>
+        <h3 style="margin-bottom:4px;">🏆 Master Stats</h3>
+        <div class="hint" style="margin:0;">Classement toutes saisons validées confondues — ${ms.validatedDraftCount} draft(s) · ${ms.pokemonAboveThreshold} Pokémon classés</div>
+      </div>
+      <span class="btn-primary">Voir le classement →</span>
+    </div>
+  </div>` : '';
+  const rowsHtml = homeOrder.map(entry=>{
+    if(entry.type==='draft'){
+      const dft = drafts[entry.id];
+      return dft ? bundleDraftRowHtml(dft) : '';
+    }
+    const folder = folders[entry.id];
+    if(!folder) return '';
+    const draftIds = folder.draftIds || [];
+    const inner = draftIds.map(did=> drafts[did] ? bundleDraftRowHtml(drafts[did]) : '').join('')
+      || `<div class="hint" style="margin:0 0 10px;">Dossier vide.</div>`;
+    return `<div class="folder-block-ro">
+      <div class="folder-header-ro">📁 ${escapeHtml(folder.name)} <span class="folder-count-ro">${draftIds.length}</span></div>
+      <div class="folder-body-ro">${inner}</div>
+    </div>`;
+  }).join('');
+  container.innerHTML = `${masterCardHtml}<div class="section"><h3>Drafts</h3>${rowsHtml || '<div class="empty-state">Aucun draft publié pour l\'instant.</div>'}</div>`;
+  const mc = container.querySelector('[data-open-master]');
+  if(mc) mc.addEventListener('click', showBundleMaster);
+  container.querySelectorAll('[data-open-bundle-draft]').forEach(el=>{
+    el.addEventListener('click', ()=> openBundleDraft(el.getAttribute('data-open-bundle-draft')));
+  });
+}
+function renderBundleMaster(){
+  document.getElementById('main-tabs').classList.add('hidden');
+  const container = document.getElementById('content');
+  const ms = bundle.masterStats;
+  if(!ms || !Array.isArray(ms.ranking) || !ms.ranking.length){
+    container.innerHTML = `<div class="section"><h3>🏆 Master Stats</h3><div class="empty-state">Aucune donnée Master Stats publiée pour l'instant.</div></div>`;
+    return;
+  }
+  const rowsHtml = ms.ranking.map(r=>`<tr>
+      <td><span class="rank-pill ${r.rank<=Math.max(1,Math.ceil(ms.ranking.length*0.1))?'rank-top':'rank-bottom'}">#${r.rank}</span></td>
+      <td><img class="mvp-sprite" src="${spriteUrl(r.pid)}" loading="lazy" alt=""></td>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${r.gp}</td><td>${r.k}</td><td>${r.d}</td>
+      <td>${r.winrate}%</td><td>${r.killsPerGame}</td><td>${r.survivalRate}%</td><td>${r.kd}</td>
+      <td>${r.pickRate}%</td><td>${r.usageRate}%</td><td>${r.score}</td>
+    </tr>`).join('');
+  container.innerHTML = `<div class="section" style="max-width:1200px;">
+    <h3>🏆 Master Stats</h3>
+    <div class="hint">${ms.validatedDraftCount} draft(s) validé(s) · ${ms.pokemonCount} Pokémon avec au moins 1 match · ${ms.pokemonAboveThreshold} au-dessus du seuil de ${ms.minGpThreshold} MJ · généré le ${new Date(ms.generatedAt).toLocaleString('fr-FR')}</div>
+    <div style="overflow-x:auto;"><table class="data-table">
+      <thead><tr><th>#</th><th></th><th>Pokémon</th><th>GP</th><th>K</th><th>D</th><th>Winrate</th><th>K/MJ</th><th>Survie</th><th>K/D</th><th>Pick%</th><th>Usage%</th><th>Score</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table></div>
+  </div>`;
+}
+function setUrlState(params){
+  const url = new URL(window.location.href);
+  if(Object.prototype.hasOwnProperty.call(params,'draft')){
+    if(params.draft) url.searchParams.set('draft', params.draft); else url.searchParams.delete('draft');
+  }
+  if(Object.prototype.hasOwnProperty.call(params,'view')){
+    if(params.view) url.searchParams.set('view', params.view); else url.searchParams.delete('view');
+  }
+  if(params.draft) url.searchParams.delete('view');
+  if(params.view) url.searchParams.delete('draft');
+  history.replaceState(null, '', url.toString());
+}
+async function copyShareLink(){
+  const link = window.location.href;
+  try{
+    await navigator.clipboard.writeText(link);
+    alert('Lien copié dans le presse-papier !');
+  }catch(e){
+    prompt('Copie ce lien :', link);
+  }
+}
+function openBundleDraft(id){
+  const dft = bundle.drafts[id];
+  if(!dft) return;
+  d = dft;
+  pokedex = (bundle.pokedexSnapshots && bundle.pokedexSnapshots[id]) || {};
+  bundleView = 'draft';
+  bundleOpenDraftId = id;
+  document.getElementById('main-tabs').classList.remove('hidden');
+  activeTab = 'board';
+  setTab('board');
+  setUrlState({ draft: id });
+}
+function showBundleHome(){
+  bundleView = 'home';
+  bundleOpenDraftId = null;
+  renderBundleHome();
+  setUrlState({ draft: null, view: null });
+}
+function showBundleMaster(){
+  bundleView = 'master';
+  renderBundleMaster();
+  setUrlState({ view: 'master' });
+}
+
 function setTab(tab){
   activeTab = tab;
   document.querySelectorAll('.main-tab-btn').forEach(b=> b.classList.toggle('active', b.getAttribute('data-tab')===tab));
@@ -555,7 +711,7 @@ document.querySelectorAll('.main-tab-btn').forEach(btn=>{
    Web App Google Apps Script (donnée à la fin du déploiement, se termine par /exec).
    Laisse vide si tu préfères que chacun la renseigne lui-même, ou passe-la dans l'URL :
    draft-board-viewer.html?sheet=URL */
-const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzAzZrwehJEWYstUfCDThT9QXf7JAmIGXmlQHpSRAA9rDDS90N2tJPSDkpfl5A9rMvydQ/exec';
+const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbw1eMxtRIM4JD5LZX5E_DH1lJz5Qg4f1-9DTvS6AbgZ4Em_uJOY1M_DbUFAQEu_JqVg0w/exec';
 
 const VIEWER_CREDS_KEY = 'pkdraft_viewer_creds_v1';
 function loadViewerCreds(){ try{ return JSON.parse(localStorage.getItem(VIEWER_CREDS_KEY)) || {}; }catch(e){ return {}; } }
@@ -568,6 +724,25 @@ async function loadFromSheets(url){
     const res = await fetch(url);
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const record = await res.json();
+
+    if(record && record.type === 'pkdraft-general-sync' && record.data && record.data.drafts){
+      bundle = record.data;
+      saveViewerSheetUrl(url);
+      document.getElementById('bundle-nav').classList.remove('hidden');
+      document.getElementById('refresh-btn').style.display = '';
+      document.getElementById('refresh-btn-compact').style.display = '';
+      statusEl.textContent = 'Chargé ✓' + (record.publishedAt ? ' — dernière publication : ' + new Date(record.publishedAt).toLocaleString('fr-FR') : '');
+      // Un rafraîchissement (ou un lien profond ?draft=/&view=master) essaie de rester sur la
+      // même vue plutôt que de renvoyer systématiquement à l'accueil.
+      if(bundleView==='draft' && bundleOpenDraftId && bundle.drafts[bundleOpenDraftId]) openBundleDraft(bundleOpenDraftId);
+      else if(bundleView==='master') showBundleMaster();
+      else showBundleHome();
+      return true;
+    }
+
+    // Format d'un draft publié seul (rétro-compatibilité avec les anciens liens par draft).
+    bundle = null;
+    document.getElementById('bundle-nav').classList.add('hidden');
     d = record.data || record;
     pokedex = record.pokedexSnapshot || {};
     if(!d || !d.teams){ throw new Error("Contenu inattendu : ce Google Sheet ne semble pas contenir de draft publié."); }
@@ -606,6 +781,9 @@ document.getElementById('refresh-btn-compact').addEventListener('click', ()=>{
 document.getElementById('config-toggle-btn').addEventListener('click', ()=>{
   document.getElementById('sync-form-wrap').classList.toggle('compact-hidden');
 });
+document.getElementById('bundle-home-btn').addEventListener('click', showBundleHome);
+document.getElementById('bundle-master-btn').addEventListener('click', showBundleMaster);
+document.getElementById('bundle-copy-link-btn').addEventListener('click', copyShareLink);
 
 /* Auto-load, par ordre de priorité : URL (?sheet=) > valeur codée en dur par l'organisateur
    (DEFAULT_SHEET_URL) > dernière source utilisée sur cet appareil. */
@@ -620,6 +798,12 @@ document.getElementById('config-toggle-btn').addEventListener('click', ()=>{
     document.getElementById('sync-form-wrap').classList.add('compact-hidden');
     document.getElementById('config-toggle-btn').style.display = 'none';
   }
+  // Lien profond ?draft=<id> ou &view=master : si la source chargée est une synchronisation
+  // générale, on ouvre directement la bonne vue plutôt que l'écran d'accueil.
+  const deepDraft = params.get('draft');
+  const deepView = params.get('view');
+  if(deepDraft){ bundleView = 'draft'; bundleOpenDraftId = deepDraft; }
+  else if(deepView === 'master'){ bundleView = 'master'; }
   if(sheetUrl) loadFromSheets(sheetUrl);
 })();
 </script>
