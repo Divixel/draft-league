@@ -207,6 +207,7 @@ let bundleView = 'home';  // 'home' | 'master' | 'draft' — uniquement pertinen
 let bundleOpenDraftId = null;
 let masterViewerSortKey = 'score';
 let masterViewerSortDir = 'desc';
+let masterViewerMinGp = null; // null = pas encore initialisé (repris du seuil suggéré par l'organisateur au 1er affichage)
 const MASTER_VIEWER_COLUMNS = [
   { key:'gp', label:'MJ', title:'Matchs joués (aligné)' },
   { key:'k', label:'Kills', title:'Nombre total de kills' },
@@ -523,11 +524,16 @@ function renderSchedule(){
   });
 }
 
-function tierCost(tier){ const n = Number(tier); return isNaN(n) ? 0 : n; }
 function getCostViewer(dd, pid){ const tier = (dd.tiers && dd.tiers[pid]) || 'Untiered'; return tierCost(tier); }
 function teamSpentViewer(dd, teamId){
   let sum = 0;
   for(const [pid, tid] of Object.entries(dd.picks||{})) if(tid === teamId) sum += getCostViewer(dd, pid);
+  return sum;
+}
+function teraCaptainSpentViewer(dd, teamId){
+  const caps = draftTeraCaptains(dd);
+  let sum = 0;
+  for(const pid of Object.keys(caps)) if(String(dd.picks[pid])===String(teamId)) sum += getCostViewer(dd, pid);
   return sum;
 }
 function renderRoster(){
@@ -561,6 +567,14 @@ function renderRoster(){
       const over = spent > team.budget;
       budgetHtml = `<div class="budget-row"><span>Budget</span><span class="mono">${spent} / ${team.budget}</span></div>
       <div class="budget-bar"><div class="budget-bar-fill ${over?'over':''}" style="width:${pct}%"></div></div>`;
+    }
+    const teraBudget = draftTeraCaptainBudget(d);
+    if(teraBudget > 0){
+      const teraSpent = teraCaptainSpentViewer(d, team.id);
+      const teraPct = Math.min(100, (teraSpent/teraBudget)*100);
+      const teraOver = teraSpent > teraBudget;
+      budgetHtml += `<div class="budget-row"><span>Budget Tera-Capitaine</span><span class="mono">${teraSpent} / ${teraBudget}</span></div>
+      <div class="budget-bar"><div class="budget-bar-fill ${teraOver?'over':''}" style="width:${teraPct}%"></div></div>`;
     }
     return `<div class="team-card" style="--team-color:${team.color}">
       <div class="team-card-head"><span><span class="th-dot" style="background:${team.color}"></span>${escapeHtml(team.name)}</span><span style="font-size:11px;color:var(--text-muted);">${rosterIds.length} Pokémon</span></div>
@@ -661,6 +675,25 @@ function renderBundleHome(){
     el.addEventListener('click', ()=> openBundleDraft(el.getAttribute('data-open-bundle-draft')));
   });
 }
+function computeViewerMasterRanking(ms, threshold){
+  const allRows = Array.isArray(ms.allRows) && ms.allRows.length ? ms.allRows : ms.ranking;
+  const eligible = allRows.filter(r => r.gp >= threshold);
+  function norm(val, arr, getter){
+    const vals = arr.map(getter);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    if(max===min) return 1;
+    return (val-min)/(max-min);
+  }
+  return eligible.map(r=>{
+    const nWinrate = norm(r.winrate, eligible, x=>x.winrate);
+    const nKpg = norm(r.killsPerGame, eligible, x=>x.killsPerGame);
+    const nSurvival = norm(r.survivalRate, eligible, x=>x.survivalRate);
+    const nPickRate = norm(r.pickRate, eligible, x=>x.pickRate);
+    const nUsageRate = norm(r.usageRate, eligible, x=>x.usageRate);
+    const score = Number((100 * (0.4*nWinrate + 0.2*nKpg + 0.2*nSurvival + 0.1*nPickRate + 0.1*nUsageRate)).toFixed(1));
+    return { ...r, score };
+  });
+}
 function renderBundleMaster(){
   document.getElementById('main-tabs').classList.add('hidden');
   const container = document.getElementById('content');
@@ -669,25 +702,34 @@ function renderBundleMaster(){
     container.innerHTML = `<div class="section"><h3>🏆 Master Stats</h3><div class="empty-state">Aucune donnée Master Stats publiée pour l'instant.</div></div>`;
     return;
   }
-  const sorted = [...ms.ranking].sort((a,b)=>{
+  const hasAllRows = Array.isArray(ms.allRows) && ms.allRows.length;
+  if(masterViewerMinGp === null) masterViewerMinGp = ms.minGpThreshold || 0;
+  const eligibleRows = computeViewerMasterRanking(ms, masterViewerMinGp);
+  const sorted = [...eligibleRows].sort((a,b)=>{
     const dir = masterViewerSortDir==='asc' ? 1 : -1;
     return (a[masterViewerSortKey]-b[masterViewerSortKey]) * dir;
   });
+  const thresholdNoteHtml = hasAllRows ? '' :
+    ` <span style="color:var(--text-muted);">(cette publication ne contient que les Pokémon déjà au-dessus du seuil de ${ms.minGpThreshold} choisi par l'organisateur — mets à jour l'outil et republie pour un filtre complet sur toute la population)</span>`;
   const theadHtml = `<th>#</th><th></th><th>Pokémon</th>` + MASTER_VIEWER_COLUMNS.map(col=>{
     const arrow = masterViewerSortKey===col.key ? `<span class="sort-arrow">${masterViewerSortDir==='desc'?'▼':'▲'}</span>` : '';
     return `<th data-sort-master-viewer="${col.key}" class="${masterViewerSortKey===col.key?'sorted':''}" title="${col.title}">${col.label}${arrow}</th>`;
   }).join('');
-  const rowsHtml = sorted.map((r,idx)=>`<tr>
+  const rowsHtml = sorted.length ? sorted.map((r,idx)=>`<tr>
       <td><span class="rank-pill ${idx<Math.max(1,Math.ceil(sorted.length*0.1))?'rank-top':'rank-bottom'}">#${idx+1}</span></td>
       <td><img class="mvp-sprite" src="${spriteUrl(r.pid)}" loading="lazy" alt=""></td>
       <td>${escapeHtml(r.name)}</td>
       <td>${r.gp}</td><td>${r.k}</td>
       <td>${r.winrate}%</td><td>${r.killsPerGame}</td><td>${r.survivalRate}%</td><td>${r.kd}</td>
       <td>${r.pickRate}%</td><td>${r.usageRate}%</td><td>${r.score}</td>
-    </tr>`).join('');
+    </tr>`).join('') : `<tr><td colspan="12"><span style="color:var(--text-muted);">Aucun Pokémon n'atteint ce seuil de matchs joués.</span></td></tr>`;
   container.innerHTML = `<div class="section" style="max-width:1200px;">
     <h3>🏆 Master Stats</h3>
-    <div class="hint">${ms.validatedDraftCount} draft(s) validé(s) · ${ms.pokemonCount} Pokémon avec au moins 1 match · ${ms.pokemonAboveThreshold} au-dessus du seuil de ${ms.minGpThreshold} MJ · généré le ${new Date(ms.generatedAt).toLocaleString('fr-FR')} · clique une colonne pour trier</div>
+    <div class="hint">${ms.validatedDraftCount} draft(s) validé(s) · ${ms.pokemonCount} Pokémon avec au moins 1 match · généré le ${new Date(ms.generatedAt).toLocaleString('fr-FR')} · clique une colonne pour trier</div>
+    <div class="master-controls" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <label style="font-size:12px;color:var(--text-muted);">Seuil minimum de matchs joués <input type="number" id="master-viewer-min-gp" min="0" value="${masterViewerMinGp}" style="width:60px;margin-left:6px;background:var(--surface-hi);border:1px solid var(--line);color:var(--text-primary);border-radius:6px;padding:4px 7px;"></label>
+      <span style="font-size:11.5px;color:var(--text-muted);">${eligibleRows.length} Pokémon au-dessus du seuil${thresholdNoteHtml}</span>
+    </div>
     <div style="overflow-x:auto;"><table class="data-table">
       <thead><tr>${theadHtml}</tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -700,6 +742,11 @@ function renderBundleMaster(){
       else { masterViewerSortKey = key; masterViewerSortDir = 'desc'; }
       renderBundleMaster();
     });
+  });
+  const gpInput = document.getElementById('master-viewer-min-gp');
+  if(gpInput) gpInput.addEventListener('change', ()=>{
+    masterViewerMinGp = Math.max(0, Number(gpInput.value) || 0);
+    renderBundleMaster();
   });
 }
 function setUrlState(params){
