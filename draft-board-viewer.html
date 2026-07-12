@@ -28,6 +28,7 @@
   *{box-sizing:border-box;}
   body{margin:0;}
   html,body{height:100%;background:var(--bg-void);color:var(--text-primary);font-family:'Inter',sans-serif;}
+  .mono{font-family:'JetBrains Mono',monospace;}
   h1,h2,h3{font-family:'Space Grotesk',sans-serif;margin:0;}
   button{font-family:inherit;cursor:pointer;}
   input{font-family:inherit;}
@@ -89,6 +90,14 @@
 
   .roster-teams-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
   .team-card{background:var(--surface-raised);border:1px solid var(--line);border-left:3px solid var(--team-color,var(--accent));border-radius:10px;padding:14px;}
+  .budget-row{display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:9px;}
+  .budget-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.08);margin-top:5px;overflow:hidden;}
+  .budget-bar-fill{height:100%;border-radius:3px;background:var(--team-color, var(--accent));transition:width .2s;}
+  .budget-bar-fill.over{background:var(--accent) !important;}
+  th[data-sort-master-viewer]{cursor:pointer;user-select:none;white-space:nowrap;}
+  th[data-sort-master-viewer]:hover{color:var(--text);}
+  th[data-sort-master-viewer].sorted{color:var(--accent);}
+  .sort-arrow{font-size:9px;margin-left:3px;}
   .team-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-weight:700;font-size:13px;}
   .roster-pill-list{display:flex;flex-wrap:wrap;gap:6px;}
   .roster-pill{display:flex;align-items:center;gap:6px;background:var(--surface-hi);padding:4px 9px 4px 4px;border-radius:20px;font-size:11.5px;}
@@ -196,6 +205,19 @@ let standingsSubview = 'teams';
 let bundle = null;        // {drafts, folders, homeOrder, pokedexSnapshots, masterStats} si sync générale chargée
 let bundleView = 'home';  // 'home' | 'master' | 'draft' — uniquement pertinent quand bundle != null
 let bundleOpenDraftId = null;
+let masterViewerSortKey = 'score';
+let masterViewerSortDir = 'desc';
+const MASTER_VIEWER_COLUMNS = [
+  { key:'gp', label:'MJ', title:'Matchs joués (aligné)' },
+  { key:'k', label:'Kills', title:'Nombre total de kills' },
+  { key:'winrate', label:'Winrate', title:"% de victoires d'équipe quand aligné" },
+  { key:'killsPerGame', label:'K/MJ', title:'Kills moyens par match joué' },
+  { key:'survivalRate', label:'Survie', title:'% de matchs où il ne meurt pas' },
+  { key:'kd', label:'K/D', title:'Ratio kills / morts' },
+  { key:'pickRate', label:'Pick rate', title:'% des drafts validés où il a été drafté' },
+  { key:'usageRate', label:'Usage rate', title:'Une fois drafté, % des matchs de son équipe où il est réellement aligné' },
+  { key:'score', label:'Score', title:'Classement composite pondéré (voir l\'outil pour le détail)' },
+];
 
 const TYPE_COLORS = {
   normal:'var(--t-normal)', fire:'var(--t-fire)', water:'var(--t-water)', electric:'var(--t-electric)',
@@ -501,6 +523,13 @@ function renderSchedule(){
   });
 }
 
+function tierCost(tier){ const n = Number(tier); return isNaN(n) ? 0 : n; }
+function getCostViewer(dd, pid){ const tier = (dd.tiers && dd.tiers[pid]) || 'Untiered'; return tierCost(tier); }
+function teamSpentViewer(dd, teamId){
+  let sum = 0;
+  for(const [pid, tid] of Object.entries(dd.picks||{})) if(tid === teamId) sum += getCostViewer(dd, pid);
+  return sum;
+}
 function renderRoster(){
   const container = document.getElementById('content');
   const orderHtml = (Array.isArray(d.order) && d.order.length) ? `<div class="section">
@@ -515,6 +544,7 @@ function renderRoster(){
       }).join('')}</tbody>
     </table>
   </div>` : '';
+  const hasBudget = d.teams.some(t=> typeof t.budget === 'number' && t.budget > 0);
   const cardsHtml = d.teams.length ? d.teams.map(team=>{
     const rosterIds = teamRosterPids(d, team.id);
     const rosterHtml = rosterIds.length ? rosterIds.map(pid=>{
@@ -524,8 +554,17 @@ function renderRoster(){
       return `<span class="roster-pill ${isCaptain?'is-captain':''}"><img src="${spriteUrl(pid)}" loading="lazy" alt="">${escapeHtml(pokemonName(pid))}${teraHtml}</span>`;
     }).join('')
       : `<span style="color:var(--text-muted);font-size:11.5px;">Aucun Pokémon drafté.</span>`;
+    let budgetHtml = '';
+    if(hasBudget && typeof team.budget === 'number' && team.budget > 0){
+      const spent = teamSpentViewer(d, team.id);
+      const pct = Math.min(100, (spent/team.budget)*100);
+      const over = spent > team.budget;
+      budgetHtml = `<div class="budget-row"><span>Budget</span><span class="mono">${spent} / ${team.budget}</span></div>
+      <div class="budget-bar"><div class="budget-bar-fill ${over?'over':''}" style="width:${pct}%"></div></div>`;
+    }
     return `<div class="team-card" style="--team-color:${team.color}">
       <div class="team-card-head"><span><span class="th-dot" style="background:${team.color}"></span>${escapeHtml(team.name)}</span><span style="font-size:11px;color:var(--text-muted);">${rosterIds.length} Pokémon</span></div>
+      ${budgetHtml}
       <div class="roster-pill-list">${rosterHtml}</div>
     </div>`;
   }).join('') : `<div class="empty-state">Aucune équipe.</div>`;
@@ -630,22 +669,38 @@ function renderBundleMaster(){
     container.innerHTML = `<div class="section"><h3>🏆 Master Stats</h3><div class="empty-state">Aucune donnée Master Stats publiée pour l'instant.</div></div>`;
     return;
   }
-  const rowsHtml = ms.ranking.map(r=>`<tr>
-      <td><span class="rank-pill ${r.rank<=Math.max(1,Math.ceil(ms.ranking.length*0.1))?'rank-top':'rank-bottom'}">#${r.rank}</span></td>
+  const sorted = [...ms.ranking].sort((a,b)=>{
+    const dir = masterViewerSortDir==='asc' ? 1 : -1;
+    return (a[masterViewerSortKey]-b[masterViewerSortKey]) * dir;
+  });
+  const theadHtml = `<th>#</th><th></th><th>Pokémon</th>` + MASTER_VIEWER_COLUMNS.map(col=>{
+    const arrow = masterViewerSortKey===col.key ? `<span class="sort-arrow">${masterViewerSortDir==='desc'?'▼':'▲'}</span>` : '';
+    return `<th data-sort-master-viewer="${col.key}" class="${masterViewerSortKey===col.key?'sorted':''}" title="${col.title}">${col.label}${arrow}</th>`;
+  }).join('');
+  const rowsHtml = sorted.map((r,idx)=>`<tr>
+      <td><span class="rank-pill ${idx<Math.max(1,Math.ceil(sorted.length*0.1))?'rank-top':'rank-bottom'}">#${idx+1}</span></td>
       <td><img class="mvp-sprite" src="${spriteUrl(r.pid)}" loading="lazy" alt=""></td>
       <td>${escapeHtml(r.name)}</td>
-      <td>${r.gp}</td><td>${r.k}</td><td>${r.d}</td>
+      <td>${r.gp}</td><td>${r.k}</td>
       <td>${r.winrate}%</td><td>${r.killsPerGame}</td><td>${r.survivalRate}%</td><td>${r.kd}</td>
       <td>${r.pickRate}%</td><td>${r.usageRate}%</td><td>${r.score}</td>
     </tr>`).join('');
   container.innerHTML = `<div class="section" style="max-width:1200px;">
     <h3>🏆 Master Stats</h3>
-    <div class="hint">${ms.validatedDraftCount} draft(s) validé(s) · ${ms.pokemonCount} Pokémon avec au moins 1 match · ${ms.pokemonAboveThreshold} au-dessus du seuil de ${ms.minGpThreshold} MJ · généré le ${new Date(ms.generatedAt).toLocaleString('fr-FR')}</div>
+    <div class="hint">${ms.validatedDraftCount} draft(s) validé(s) · ${ms.pokemonCount} Pokémon avec au moins 1 match · ${ms.pokemonAboveThreshold} au-dessus du seuil de ${ms.minGpThreshold} MJ · généré le ${new Date(ms.generatedAt).toLocaleString('fr-FR')} · clique une colonne pour trier</div>
     <div style="overflow-x:auto;"><table class="data-table">
-      <thead><tr><th>#</th><th></th><th>Pokémon</th><th>GP</th><th>K</th><th>D</th><th>Winrate</th><th>K/MJ</th><th>Survie</th><th>K/D</th><th>Pick%</th><th>Usage%</th><th>Score</th></tr></thead>
+      <thead><tr>${theadHtml}</tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table></div>
   </div>`;
+  container.querySelectorAll('[data-sort-master-viewer]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.getAttribute('data-sort-master-viewer');
+      if(masterViewerSortKey === key){ masterViewerSortDir = masterViewerSortDir==='desc' ? 'asc' : 'desc'; }
+      else { masterViewerSortKey = key; masterViewerSortDir = 'desc'; }
+      renderBundleMaster();
+    });
+  });
 }
 function setUrlState(params){
   const url = new URL(window.location.href);
